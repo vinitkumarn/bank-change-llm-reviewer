@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from bankreview import config, evaluate
 from bankreview.__main__ import main
 
@@ -76,3 +78,21 @@ def test_cli_run_and_eval(data_dir, tmp_path, capsys):
                  "--data-dir", str(data_dir), "--report-dir", str(tmp_path)]) == 0
     assert (tmp_path / "eval_rules_redteam.md").exists()
     assert "[3/3]" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("by", ["naive", "rules"])
+def test_each_set_writes_its_own_report(data_dir, tmp_path, by):
+    """main, redteam and reworded each get their own file; none overwrites another."""
+    expected = {"main": f"eval_{by}.md", "redteam": f"eval_{by}_redteam.md",
+                "reworded": f"eval_{by}_reworded.md"}
+    first_case = {"main": "| L01 |", "redteam": "| R01 |", "reworded": "| P01 |"}
+    for which in expected:
+        assert main(["eval", "--by", by, "--set", which, "--data-dir", str(data_dir),
+                     "--report-dir", str(tmp_path)]) == 0
+    assert sorted(p.name for p in tmp_path.glob("*.md")) == sorted(expected.values())
+    for which, name in expected.items():
+        text = (tmp_path / name).read_text(encoding="utf-8")
+        assert f"# Eval: {by} on the {which} set" in text
+        assert first_case[which] in text
+        others = [c for w, c in first_case.items() if w != which]
+        assert not any(c in text for c in others)
