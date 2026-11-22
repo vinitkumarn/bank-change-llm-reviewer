@@ -14,8 +14,10 @@ from typing import Callable
 
 import duckdb
 
-from bankreview import baselines, config
-from bankreview.rules import Review
+from bankreview import baselines, config, db
+from bankreview.rules import Master, Request, Review
+
+Reviewer = Callable[[Request, Master], Review]
 
 
 @dataclass
@@ -48,13 +50,16 @@ def load_labels(path: Path | str) -> list[dict]:
 
 def run_eval(con: duckdb.DuckDBPyConnection, labels: list[dict], by: str,
              cases: list[str] | None = None, limit: int | None = None,
-             progress: Callable[[str], None] = print) -> list[CaseResult]:
+             progress: Callable[[str], None] = print,
+             reviewer: Reviewer | None = None) -> list[CaseResult]:
+    """`reviewer` overrides the baseline named by `by` (used for the claude reviewer)."""
+    review_fn = reviewer or baselines.BASELINES[by]
     chosen = [c for c in labels if not cases or c["case_id"] in cases]
     if limit is not None:
         chosen = chosen[:limit]
     results = []
     for i, label in enumerate(chosen, 1):
-        review = baselines.run_case(con, label["case_id"], by)
+        review = review_fn(*db.load_case(con, label["case_id"]))
         res = CaseResult(label, review)
         results.append(res)
         progress(f"[{i}/{len(chosen)}] {res.case_id} got {review.risk_level} expected "
@@ -69,7 +74,9 @@ def _rate(num: int, den: int) -> dict:
 def metrics(results: list[CaseResult]) -> dict:
     fraud = [r for r in results if r.label["is_fraud"] == "Y"]
     caught = [r for r in fraud if r.review.risk_level == "HIGH"]
-    legit = [r for r in results if r.label["group"] == "LEGIT"]
+    # Legit = the L cases, plus the legit cases of the held-out reworded set.
+    legit = [r for r in results if r.label["group"] == "LEGIT"
+             or (r.label["group"] == "REWORDED" and r.label["is_fraud"] == "N")]
     grey_high = [r for r in results
                  if r.label["group"] == "GREY" and r.label["expected_risk_level"] == "HIGH"]
     expected_sigs = sum(len(r.label["expected_signals"]) for r in results)
@@ -112,7 +119,8 @@ def report_path(report_dir: Path | str, by: str, which: str) -> Path:
 
 
 def write_report(results: list[CaseResult], by: str, which: str,
-                 report_dir: Path | str = config.REPORTS_DIR) -> Path:
+                 report_dir: Path | str = config.REPORTS_DIR,
+                 extra_lines: list[str] | None = None) -> Path:
     m = metrics(results)
     grey = ", ".join(m["grey_ids"]) or "none"
     lines = [
@@ -124,7 +132,7 @@ def write_report(results: list[CaseResult], by: str, which: str,
         "| Metric | Value |",
         "|---|---|",
         f"| Fraud recall (fraud flagged HIGH) | {fmt_rate(m['fraud_recall'])} |",
-        f"| False-alarm rate (L cases flagged HIGH) | {fmt_rate(m['false_alarm_rate'])} |",
+        f"| False-alarm rate (legit cases flagged HIGH) | {fmt_rate(m['false_alarm_rate'])} |",
         f"| Grey cases labelled HIGH ({grey}) flagged HIGH | "
         f"{fmt_rate(m['grey_expected_high'])} |",
         f"| Risk-level accuracy | {fmt_rate(m['risk_accuracy'])} |",
@@ -150,6 +158,8 @@ def write_report(results: list[CaseResult], by: str, which: str,
             f"{rv.risk_level} | {', '.join(r.missed_signals) or '-'} | {', '.join(extra) or '-'} "
             f"| {lb['expected_hold']}/{rv.hold} | {lb['expected_status']}/{rv.status} | "
             f"{_usd(rv.dollars_at_risk)} | {'ok' if r.ok else 'MISS'} |")
+    if extra_lines:
+        lines += [""] + extra_lines
     path = report_path(report_dir, by, which)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")

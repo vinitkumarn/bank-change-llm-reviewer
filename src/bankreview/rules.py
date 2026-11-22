@@ -101,6 +101,8 @@ class Review:
     hold: str  # Y | N
     owner: str
     actions: list[str] = field(default_factory=list)
+    confidence: str = ""  # set by Python (claude reviewer only): HIGH | MEDIUM | LOW
+    explanation: str = ""  # the model's plain-language explanation (claude reviewer only)
 
     @property
     def signal_codes(self) -> list[str]:
@@ -113,6 +115,8 @@ class Review:
             "evidence": {s.code: s.evidence for s in self.signals},
             "dollars_at_risk": str(self.dollars_at_risk), "hold": self.hold,
             "owner": self.owner, "actions": self.actions,
+            **({"confidence": self.confidence} if self.confidence else {}),
+            **({"explanation": self.explanation} if self.explanation else {}),
         }
 
 
@@ -324,8 +328,9 @@ def status(facts: Facts) -> str:
 
 
 def review(case_id: str, by: str, req: Request, master: Master, signals: list[Signal],
-           facts: Facts, case_status: str | None = None) -> Review:
-    level = risk_level(signals)
+           facts: Facts, case_status: str | None = None, floor: str = LOW) -> Review:
+    """`floor` is the never-downgrade floor: the level can go up from it, never below it."""
+    level = higher_level(risk_level(signals), floor)
     grey = bool(facts.grey_quotes)
     hold_flag = hold(level, req.already_applied)
     return Review(

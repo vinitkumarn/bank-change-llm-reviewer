@@ -21,6 +21,7 @@ MAIN_IDS = (
     + [f"M{i:02d}" for i in range(1, 6)]
 )
 RED_IDS = [f"R{i:02d}" for i in range(1, 11)]
+P_IDS = [f"P{i:02d}" for i in range(1, 11)]
 CSV_NAMES = ["suppliers", "supplier_sites", "supplier_contacts", "bank_accounts",
              "payment_schedules", "change_requests"]
 LABEL_KEYS = {"case_id", "group", "vendor_id", "is_fraud", "expected_risk_level",
@@ -43,13 +44,13 @@ def built(tmp_path_factory) -> Path:
 def plans(built):
     main_plan = json.loads((built / "plan.json").read_text(encoding="utf-8"))
     red_plan = json.loads((built / "redteam_plan.json").read_text(encoding="utf-8"))
-    return main_plan, red_plan
+    p_plan = json.loads((built / "reworded_plan.json").read_text(encoding="utf-8"))
+    return main_plan, red_plan, p_plan
 
 
 @pytest.fixture(scope="module")
 def cases(plans):
-    main_plan, red_plan = plans
-    return {c["case_id"]: c for c in main_plan["cases"] + red_plan["cases"]}
+    return {c["case_id"]: c for plan in plans for c in plan["cases"]}
 
 
 def read_csv(built: Path, name: str) -> list[dict]:
@@ -83,10 +84,11 @@ def levenshtein(a: str, b: str) -> int:
 # --- counts and ids ----------------------------------------------------------------
 
 def test_case_counts_and_ids(plans):
-    main_plan, red_plan = plans
+    main_plan, red_plan, p_plan = plans
     assert [c["case_id"] for c in main_plan["cases"]] == MAIN_IDS
     assert [c["case_id"] for c in red_plan["cases"]] == RED_IDS
-    assert len(MAIN_IDS) == 45 and len(RED_IDS) == 10
+    assert [c["case_id"] for c in p_plan["cases"]] == P_IDS
+    assert len(MAIN_IDS) == 45 and len(RED_IDS) == 10 and len(P_IDS) == 10
 
 
 def test_redteam_ids_only_in_redteam_plan(built):
@@ -98,7 +100,7 @@ def test_redteam_ids_only_in_redteam_plan(built):
 
 
 def test_every_case_has_a_request(requests):
-    assert set(requests) == set(MAIN_IDS) | set(RED_IDS)
+    assert set(requests) == set(MAIN_IDS) | set(RED_IDS) | set(P_IDS)
     for r in requests.values():
         assert r["body"].strip()
         assert r["channel"] in {"email", "letter", "portal"}
@@ -110,7 +112,7 @@ def test_every_case_has_a_request(requests):
 def test_same_seed_identical_files(tmp_path):
     a = generator.write(tmp_path / "a")
     b = generator.write(tmp_path / "b")
-    assert len(a) == len(b) == 8
+    assert len(a) == len(b) == 9
     for pa, pb in zip(a, b):
         assert pa.name == pb.name
         assert pa.read_bytes() == pb.read_bytes(), pa.name
@@ -126,7 +128,8 @@ def test_different_seed_changes_data(tmp_path):
 
 def test_every_case_has_expected_labels(cases):
     for cid, c in cases.items():
-        assert set(c) == LABEL_KEYS, cid
+        extra = {"planted_quotes"} if cid.startswith("P") else set()
+        assert set(c) == LABEL_KEYS | extra, cid
         assert set(c["expected_fields"]) == FIELD_KEYS, cid
         assert c["is_fraud"] in {"Y", "N"}
         assert c["expected_risk_level"] in config.RISK_LEVELS
@@ -328,4 +331,5 @@ def test_cli_build(tmp_path, capsys):
         assert (tmp_path / "csv" / f"{name}.csv").exists()
     assert (tmp_path / "plan.json").exists()
     assert (tmp_path / "redteam_plan.json").exists()
+    assert (tmp_path / "reworded_plan.json").exists()
     assert "wrote" in capsys.readouterr().out

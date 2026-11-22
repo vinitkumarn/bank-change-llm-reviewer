@@ -27,7 +27,7 @@ def con(data_dir):
 @pytest.fixture(scope="session")
 def labels(data_dir) -> dict[str, dict]:
     out = {}
-    for name in (config.PLAN_FILE_NAME, config.REDTEAM_PLAN_FILE_NAME):
+    for name in config.PLAN_FILES.values():
         for c in json.loads((data_dir / name).read_text(encoding="utf-8"))["cases"]:
             out[c["case_id"]] = c
     return out
