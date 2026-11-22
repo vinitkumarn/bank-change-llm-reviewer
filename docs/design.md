@@ -38,7 +38,8 @@ Reference date for the whole data set: 2026-11-02. Supplier countries: US, CA, G
 | RECENT_MASTER_CHANGE | Contact or site changed in the last 30 days | MEDIUM |
 | NEW_CONTACT | Sender is not a contact on file | MEDIUM |
 
-Risk level = HIGH if any HIGH signal, else MEDIUM if any MEDIUM signal, else LOW.
+Risk level = HIGH if any HIGH signal or two or more MEDIUM signals (combined weak signals),
+else MEDIUM if one MEDIUM signal, else LOW.
 **Never-downgrade:** final risk = max(regex/rules-only risk, risk using the model's extraction).
 
 ## Decision, owners, dollars at risk
