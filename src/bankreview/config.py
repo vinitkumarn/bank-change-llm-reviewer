@@ -19,11 +19,17 @@ CSV_DIR_NAME = "csv"
 CSV_DIR = DATA_DIR / CSV_DIR_NAME
 PLAN_FILE_NAME = "plan.json"
 REDTEAM_PLAN_FILE_NAME = "redteam_plan.json"
+REWORDED_PLAN_FILE_NAME = "reworded_plan.json"
+PLAN_FILES = {"main": PLAN_FILE_NAME, "redteam": REDTEAM_PLAN_FILE_NAME,
+              "reworded": REWORDED_PLAN_FILE_NAME}
 PLAN_PATH = DATA_DIR / PLAN_FILE_NAME
 REDTEAM_PLAN_PATH = DATA_DIR / REDTEAM_PLAN_FILE_NAME
-CACHE_DIR = DATA_DIR / "cache"
+CACHE_DIR_NAME = "cache"
+CACHE_DIR = DATA_DIR / CACHE_DIR_NAME
 DB_PATH = DATA_DIR / "bankreview.duckdb"
 LOG_DIR = ROOT / "logs"
+AUDIT_PATH = LOG_DIR / "audit.jsonl"  # ids, hashes, tokens, cost and status only
+APP_LOG_PATH = LOG_DIR / "bankreview.log"  # full error messages
 REPORTS_DIR = ROOT / "reports"
 
 if load_dotenv is not None and (ROOT / ".env").exists():
@@ -85,4 +91,11 @@ OWNER_SM_TREASURY = "Supplier Master + Treasury"
 # --- Model -----------------------------------------------------------------
 MODEL = os.environ.get("BANKREVIEW_MODEL") or "claude-sonnet-5-5"
 MAX_TOKENS = 4000
-PROMPT_VERSION = "v1"
+# The prompt version is the hash of the system prompt (extractor.PROMPT_VERSION).
+
+# USD per million tokens: input, output, cache write (5 min), cache read.
+# Unknown model -> cost is reported as unknown, never guessed.
+PRICES = {
+    "claude-sonnet-5-5": (Decimal("2.00"), Decimal("10.00"), Decimal("2.50"), Decimal("0.10")),
+    "claude-opus-5-5": (Decimal("4.00"), Decimal("20.00"), Decimal("5.00"), Decimal("0.20")),
+}

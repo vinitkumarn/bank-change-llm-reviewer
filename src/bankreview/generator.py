@@ -3,7 +3,8 @@
 Writes CSVs modeled on Oracle Fusion tables (POZ_SUPPLIERS, POZ_SUPPLIER_SITES_ALL_M,
 POZ_SUPPLIER_CONTACTS, IBY_EXT_BANK_ACCOUNTS + IBY_PMT_INSTR_USES_ALL,
 AP_PAYMENT_SCHEDULES_ALL) plus the change requests, and the label files plan.json (45 main
-cases, docs/design.md Appendix A) and redteam_plan.json (10 cases, Appendix B).
+cases, docs/design.md Appendix A), redteam_plan.json (10 cases, Appendix B) and
+reworded_plan.json (10 held-out cases P01-P10 with fixed wording that no regex keyword matches).
 
 The labels are planted HERE, by hand, next to the data that causes them. They are never
 computed by rules code. Signal meanings used for planting:
@@ -35,7 +36,8 @@ from pathlib import Path
 
 from bankreview import config
 
-GROUPS = {"L": "LEGIT", "F": "FRAUD", "G": "GREY", "I": "INJECTION", "M": "MESSY", "R": "REDTEAM"}
+GROUPS = {"L": "LEGIT", "F": "FRAUD", "G": "GREY", "I": "INJECTION", "M": "MESSY", "R": "REDTEAM",
+          "P": "REWORDED"}
 ROUTE_SM = "Supplier Master"
 ROUTE_SM_TREASURY = "Supplier Master + Treasury"
 
@@ -237,6 +239,8 @@ class Spec:
     supplier_name: str | None = None
     domain: str | None = None
     contact_email_domain: str | None = None  # R05: contact on file moved to another domain
+    body_text: str | None = None  # P cases: fixed wording; only names and numbers are filled in
+    planted_quotes: tuple[str, ...] = ()  # P cases: the reworded phrases that carry the signal
 
 
 def _specs() -> list[Spec]:
@@ -420,6 +424,80 @@ def _specs() -> list[Spec]:
         Spec("R10", "US", H, ("DOMAIN_MISMATCH", "NEW_CONTACT"), True, sender="free:yahoo.com",
              style="split_lines", notes="Account number split across two lines."),
     ]
+
+    # P01-P10 Held-out reworded set (reworded_plan.json). Same fraud patterns as the main set,
+    # but worded so that none of the regex_extract keyword patterns match. Fixed text; only
+    # names and (digit-form) bank numbers are filled in. Never used to tune anything.
+    hello = "Hello Accounts Payable team,\n\n"
+    regards = "\n\nKind regards,\n{contact}\n{supplier}"
+    specs += [
+        Spec("P01", "DE", H, ("SKIP_VERIFICATION",), True,
+             body_text=(hello + "We have moved our banking to {bank}. From now on please pay us "
+                        "at IBAN {iban_spaced}.\n\nPlease don't bother phoning, it's all been "
+                        "signed off at our end." + regards),
+             planted_quotes=("Please don't bother phoning, it's all been signed off",),
+             notes="Skip verification, reworded."),
+        Spec("P02", "US", H, ("NEW_CONTACT", "URGENCY"), True, sender="new_contact",
+             body_text=(hello + "I look after payables for {supplier} now. Our receipts should "
+                        "go to {bank}, routing {routing}, account {number}.\n\nOur books close "
+                        "tonight, so this has to be in place before then.\n\nThanks,\n"
+                        "Accounts team, {supplier}"),
+             planted_quotes=("Our books close tonight, so this has to be in place before then",),
+             notes="Urgency (reworded) + new contact: two MEDIUM signals -> HIGH."),
+        Spec("P03", "US", H, ("COUNTRY_CHANGE",), True, new_country="IN",
+             body_text=(hello + "We have opened an account with our new bank in Pune and would "
+                        "like future remittances to go there: {bank}, IFSC {ifsc}, account "
+                        "{number}." + regards),
+             planted_quotes=("our new bank in Pune",),
+             notes="New bank country given only by a city (US supplier, Indian bank)."),
+        Spec("P04", "US", H, ("SHARED_ACCOUNT",), True, shared_with_other=True,
+             body_text=("Hello AP team,\n\nPlease see the message below from our treasury "
+                        "colleague. The routing number for the new account is {routing}; the "
+                        "account number is in the earlier message.\n\nThanks,\n{contact}\n"
+                        "{supplier}\n\n---------- Forwarded message ----------\nFrom: Treasury\n"
+                        "Sent: 29 October 2026\n\nHi,\nthe new account number is {num_a}\n"
+                        "{num_b}\nRegards"),
+             planted_quotes=("the account number is in the earlier message",),
+             notes=("Account details split across a forwarded thread (routing on top, account "
+                    "number in the forwarded part, split over two lines); the account already "
+                    "belongs to another supplier.")),
+        Spec("P05", "US", H, ("HOLDER_MISMATCH",), True, holder="Daniel Reyes",
+             body_text=(hello + "Please update our remittance details. The funds should go to "
+                        "the account Daniel Reyes holds for us at {bank}: routing {routing}, "
+                        "account {number}." + regards),
+             planted_quotes=("the account Daniel Reyes holds for us",),
+             notes="Holder is an unrelated individual, named in a plain sentence. Clear fraud."),
+        Spec("P06", "GB", H, ("SKIP_VERIFICATION",), True,
+             body_text=(hello + "Our payments should now go to {bank}, sort code {sort}, account "
+                        "{number}, IBAN {iban_spaced}.\n\nYour finance director agreed this "
+                        "with me on the phone yesterday, so it can go straight onto the "
+                        "system." + regards),
+             planted_quotes=("Your finance director agreed this with me on the phone yesterday, "
+                             "so it can go straight onto the system",),
+             notes="'Already approved' claim, reworded."),
+        Spec("P07", "GB", H, ("COUNTRY_CHANGE",), True, new_country="CA",
+             body_text=(hello + "We now bank with a branch in Toronto. Please send future "
+                        "payments to {bank}, transit {transit}, institution {inst}, account "
+                        "{number}." + regards),
+             planted_quotes=("We now bank with a branch in Toronto",),
+             notes="New bank country given only by a city (GB supplier, Canadian bank)."),
+        Spec("P08", "IN", L,
+             body_text=(hello + "We have moved our account to a branch in Pune. The new details "
+                        "are {bank}, IFSC {ifsc}, account {number}." + regards),
+             planted_quotes=("a branch in Pune",),
+             notes="Legit: supplier already in IN mentions Pune; no country change."),
+        Spec("P09", "US", L, channel="letter",
+             body_text=("{supplier}\n\nDear Accounts Payable,\n\nWe have switched our business "
+                        "banking to {bank}. Could you please send our future payments to "
+                        "routing {routing}, account {number}?\n\nThank you,\n\n{contact}\n"
+                        "{supplier}"),
+             notes="Legit letter, natural wording."),
+        Spec("P10", "DE", L, channel="portal",
+             body_text=("Supplier portal note from {contact} ({supplier})\nSubject: Bank detail "
+                        "update\n\nWe have switched to {bank}; please use {iban_spaced} for our "
+                        "invoices from December onwards.\n\nSubmitted by {contact}"),
+             notes="Legit portal note, IBAN mid-sentence."),
+    ]
     return specs
 
 
@@ -430,6 +508,7 @@ class BuildResult:
     tables: dict[str, list[dict]]
     plan: dict
     redteam_plan: dict
+    reworded_plan: dict
     raw_numbers: dict[str, list[str]]  # request_id -> full numbers in the body (in memory only)
 
 
@@ -472,8 +551,8 @@ class _Builder:
         self.raw_numbers: dict[str, list[str]] = {}
         self.seen_canon: set[str] = set()
         self.next_token = 1
-        combos = [(a, b) for a in NAME_FIRST for b in NAME_SECOND]
-        self.name_pool = self.rng.sample(combos, 60)
+        self.combos = [(a, b) for a in NAME_FIRST for b in NAME_SECOND]
+        self.name_pool = self.rng.sample(self.combos, 60)
         self.people = self.rng.sample([(a, b) for a in PEOPLE_FIRST for b in PEOPLE_LAST], 120)
 
     # helpers
@@ -553,19 +632,34 @@ class _Builder:
         self.add_bank_row(other_acct, other_id, self.old_date(), "Y")
         self.invoices(other_id, None)
 
-        plan_main: list[dict] = []
-        plan_red: list[dict] = []
+        plans: dict[str, list[dict]] = {"main": [], "redteam": [], "reworded": []}
         for idx, spec in enumerate(specs):
+            if spec.case_id == "P01":
+                # Added after every main / red-team case so their data stays byte-identical.
+                used = {(n.split()[0], n.split()[1]) for n in
+                        (r["vendor_name"] for r in self.tables["suppliers"])}
+                self.name_pool = self.rng.sample(
+                    [c for c in self.combos if c not in used], 11)
+                u_first, u_second = self.name_pool.pop()
+                us_name = f"{u_first} {u_second} {SUFFIX['US']}"
+                self.add_supplier(1902, us_name, "US",
+                                  f"{u_first.lower()}-{u_second.lower()}.{TLD['US']}")
+                other_acct = self.account("US", us_name)  # P04's "new" account
+                self.add_bank_row(other_acct, 1902, self.old_date(), "Y")
+                self.invoices(1902, None)
             entry = self.build_case(1001 + idx, spec, other_acct)
-            (plan_red if spec.case_id.startswith("R") else plan_main).append(entry)
+            which = {"R": "redteam", "P": "reworded"}.get(spec.case_id[0], "main")
+            if spec.case_id[0] == "P":
+                entry["planted_quotes"] = list(spec.planted_quotes)
+            plans[which].append(entry)
 
         header = {"reference_date": config.REFERENCE_DATE.isoformat(),
                   "exposure_days": config.EXPOSURE_DAYS, "currency": config.CURRENCY,
                   "seed": config.SEED}
         for rows in self.tables.values():
             rows.sort(key=lambda r: tuple(str(v) for v in r.values()))
-        return BuildResult(self.tables, {**header, "set": "main", "cases": plan_main},
-                           {**header, "set": "redteam", "cases": plan_red}, self.raw_numbers)
+        return BuildResult(self.tables, *({**header, "set": k, "cases": v}
+                                          for k, v in plans.items()), self.raw_numbers)
 
     def build_case(self, vendor_id: int, s: Spec, other_acct: Account) -> dict:
         rng = self.rng
@@ -725,6 +819,13 @@ class _Builder:
         extra = f(s.extra) if s.extra else ""
         sig_extra = f(s.signature_extra) if s.signature_extra else ""
 
+        if s.body_text:
+            n, r = new.number, new.routing
+            cut = len(n) // 2
+            nums = {"bank": new.bank_name, "number": n, "routing": r, "ifsc": r,
+                    "iban_spaced": spaced(new.iban), "sort": f"{r[:2]}-{r[2:4]}-{r[4:]}",
+                    "transit": r[:5], "inst": r[5:], "num_a": n[:cut], "num_b": n[cut:]}
+            return s.body_text.format(**fmt, **nums), extra_raw
         if s.body == "ocr_letter":
             text = (f"{fmt['supplier']}\nAccounts Receiv-\nable Department\n\nDear Sir or Ma-\ndam,\n\n"
                     f"Re: cha nge of bank\ning details\n\nWe wr ite to inform you that our\n"
@@ -793,7 +894,8 @@ def write(out_dir: Path | str = config.DATA_DIR, seed: int = config.SEED) -> lis
             writer.writerows(rows)
         written.append(path)
     for fname, plan in ((config.PLAN_FILE_NAME, result.plan),
-                        (config.REDTEAM_PLAN_FILE_NAME, result.redteam_plan)):
+                        (config.REDTEAM_PLAN_FILE_NAME, result.redteam_plan),
+                        (config.REWORDED_PLAN_FILE_NAME, result.reworded_plan)):
         path = out_dir / fname
         path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8",
                         newline="\n")
