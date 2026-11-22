@@ -76,6 +76,11 @@ SIGNAL_LEVELS = {
     "NEW_CONTACT": "MEDIUM",
 }
 RISK_LEVELS = ("LOW", "MEDIUM", "HIGH")
+LOOKALIKE_MAX_EDIT_DISTANCE = 2
+
+# Who owns the decision (docs/design.md "Decision, owners, dollars at risk").
+OWNER_SM = "Supplier Master"
+OWNER_SM_TREASURY = "Supplier Master + Treasury"
 
 # --- Model -----------------------------------------------------------------
 MODEL = os.environ.get("BANKREVIEW_MODEL") or "claude-sonnet-5-5"

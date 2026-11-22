@@ -14,6 +14,8 @@ The design is in [docs/design.md](docs/design.md).
 
 ## Status
 - PR 1: project skeleton + planted data set (45 main cases, 10 red-team cases) and labels.
+- PR 2: DuckDB load with real types, Python rules for every signal, regex-only extraction,
+  two baselines (naive, rules-only) and the eval against the planted labels.
 
 ## Setup on Windows (PowerShell)
 
@@ -61,6 +63,31 @@ This writes:
 | `data/redteam_plan.json` | labels for the 10 red-team cases (reported separately) |
 
 The same seed always produces byte-identical files. All numbers are random and synthetic.
+`build` also loads everything into `data/bankreview.duckdb` (money as DECIMAL(18,2), dates as
+DATE).
+
+## Review one case, run the eval
+
+```powershell
+python -m bankreview run --case F01 --by rules
+```
+
+```powershell
+python -m bankreview eval --by naive
+```
+
+```powershell
+python -m bankreview eval --by rules
+```
+
+```powershell
+python -m bankreview eval --by rules --set redteam
+```
+
+`--by` is `naive` (domain check only) or `rules` (regex extraction + every rule). `eval` also
+takes `--cases F01 F02` and `--limit N`. Reports go to `reports/eval_<by>.md` and
+`reports/eval_<by>_redteam.md`. Expected answers come only from `plan.json` /
+`redteam_plan.json`.
 
 ## Run the tests
 

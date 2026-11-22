@@ -54,7 +54,8 @@ else MEDIUM if one MEDIUM signal, else LOW.
   reference date. EXPOSURE_DAYS lives in config.py; Treasury owns it.
 - Grey areas (bank merger, country relocation, factoring / assignment to a finance company,
   new subsidiary): Supplier Master + Treasury decide; default = do not activate until the
-  call-back confirms, and hold if already active.
+  call-back confirms. Payments are held only if the risk is HIGH and the new account is
+  already active (the same hold rule as every other case).
 
 ## The model call
 - Input: one JSON packet: request metadata + tokenized body (wrapped as UNTRUSTED) + the
