@@ -345,6 +345,9 @@ python -m bankreview eval --by claude --no-cache
 - **CA institution-number gap on the model path.** The 3-digit Canadian institution number is
   too short to tokenize, so on the model path a shared Canadian account cannot be matched from
   the model's tokens alone. The rules-only floor still catches it. No planted case depends on it.
+- **Explanation-number guard was too strict at first.** The first real run flagged dates
+  (for example "1 December 2026") as untrusted numbers on legit cases L01 and L04, so the guard
+  was narrowed to phone numbers from the body (unless on file) and numbers with 5+ digits.
 - **No Claude numbers yet.** There is no API key in the build sandbox. The Claude column is
   filled in after a local run.
 

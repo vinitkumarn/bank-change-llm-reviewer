@@ -3,6 +3,7 @@ retry, cache and audit. No real API call anywhere."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import re
@@ -11,7 +12,7 @@ import pytest
 from fake_claude import FakeClient, all_tokens_answer, answer, packet_of
 from pydantic import ValidationError
 
-from bankreview import baselines, config, db, evaluate, extractor, generator, rules
+from bankreview import baselines, config, db, evaluate, extractor, generator, guards, rules
 from bankreview.audit import AuditLog
 from bankreview.cache import ResponseCache
 from bankreview.claude_reviewer import ClaudeReviewer
@@ -131,6 +132,51 @@ def test_unknown_token_needs_human(con, tmp_path):
 def test_explanation_with_body_phone_needs_human(con, tmp_path):
     bad = tokens_plus(explanation="The sender asks us to call +1 646 555 0187 instead.")
     assert reviewer(tmp_path, bad)(*db.load_case(con, "F06")).status == "NEEDS_HUMAN"
+
+
+def test_explanation_with_body_phone_without_country_code_needs_human(con, tmp_path):
+    bad = tokens_plus(explanation="The sender asks us to call (646) 555-0187 instead.")
+    assert reviewer(tmp_path, bad)(*db.load_case(con, "F06")).status == "NEEDS_HUMAN"
+
+
+def test_explanation_with_effective_date_is_ok(con, tmp_path):
+    # L01 wording from the first real run: a date is not a dangerous number.
+    ok = tokens_plus(explanation="Supplier asks to move payments to the new account "
+                                 "effective 1 December 2026.")
+    assert reviewer(tmp_path, ok)(*db.load_case(con, "L01")).status == "OK"
+
+
+def test_explanation_with_untrusted_6_digit_number_needs_human(con, tmp_path, caplog):
+    bad = tokens_plus(explanation="New account per supplier reference 739214.")
+    with caplog.at_level(logging.WARNING, logger="bankreview"):
+        review = reviewer(tmp_path, bad)(*db.load_case(con, "L01"))
+    assert review.status == "NEEDS_HUMAN"
+    assert "guard problem L01" in caplog.text and "...9214" in caplog.text
+    assert "739214" not in caplog.text  # long numbers are masked in the log
+
+
+def test_explanation_with_on_file_phone_in_signature_is_ok(con, tmp_path):
+    req, master = db.load_case(con, "L01")
+    req = dataclasses.replace(req, body=req.body + f"\nTel: {master.phone_on_file}")
+    ok = tokens_plus(explanation=f"Call back on the number on file, {master.phone_on_file}.")
+    assert reviewer(tmp_path, ok)(req, master).status == "OK"
+
+
+def test_guard_log_never_holds_a_raw_bank_number(con, tmp_path, caplog, raw_numbers):
+    req, master = db.load_case(con, "F04")
+    nums = raw_numbers["F04"]
+    bad = tokens_plus(grey_quotes=[f"pay into {n}" for n in nums],
+                      explanation=f"Account {nums[0]}.")
+    with caplog.at_level(logging.WARNING, logger="bankreview"):
+        assert reviewer(tmp_path, bad)(req, master).status == "NEEDS_HUMAN"
+    assert "guard problem F04" in caplog.text
+    for num in nums:
+        assert num not in caplog.text
+
+
+def test_mask_digits_keeps_last4_only():
+    assert guards.mask_digits("acct 1234 5678 90 x") == "acct [10 digits ...7890] x"
+    assert guards.mask_digits("on 1 December 2026") == "on 1 December 2026"
 
 
 def test_explanation_citing_last4_is_ok(con, tmp_path):

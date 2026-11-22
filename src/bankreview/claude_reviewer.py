@@ -7,6 +7,7 @@ rules.py decide, never below the rules-only result.
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -17,6 +18,8 @@ from bankreview.packet import build_packet, packet_json
 from bankreview.rules import Master, Request, Review
 from bankreview.schema import Extraction
 from bankreview.tokenize import hash_candidates, tokenize
+
+log = logging.getLogger("bankreview")
 
 
 @dataclass
@@ -81,6 +84,8 @@ class ClaudeReviewer:
             ext = result.extraction
 
         problems = guards.check(ext, req, master, tok) if ext is not None else []
+        for problem in problems:  # case id + message only; digits masked, no body text
+            log.warning("guard problem %s: %s", req.request_id, guards.mask_digits(problem))
         if ext is not None and not problems and not hit:
             self.cache.put(key, result.answer_text, self.model, version)
         review = guards.combine(req, master, ext, tok, problems)
