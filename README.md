@@ -127,7 +127,8 @@ never from the rules code. **None of the three sets is used to tune the prompt o
 
 Measured in this repo with `python -m bankreview eval`. Naive = domain check only.
 Rules = regex extraction + every rule, no LLM. Claude = one extraction call per request,
-Python rules decide. The Claude column needs a real API key and is filled in after a local run.
+Python rules decide. Naive and rules were measured in this repo. The Claude column is from a
+real local run (`claude-sonnet-5-5`, prompt version `0e01d0842bb8057b`).
 
 False alarms count legit cases flagged HIGH: the 15 L cases in the main set and the 3 legit
 P cases in the reworded set. Grey cases are not counted as false alarms. Cost is $0 for naive
@@ -137,13 +138,13 @@ and rules (no API call).
 
 | Metric | Naive | Rules | Claude |
 |---|---|---|---|
-| Fraud recall (fraud flagged HIGH) | 52.9% (9/17) | 100.0% (17/17) | fill in after local run |
-| False alarms (L cases flagged HIGH) | 0.0% (0/15) | 0.0% (0/15) | fill in after local run |
-| Risk-level accuracy | 73.3% (33/45) | 97.8% (44/45) | fill in after local run |
-| Signal recall | 28.6% (10/35) | 97.1% (34/35) | fill in after local run |
-| Dollars at risk caught (on fraud flagged HIGH) | $398,422.39 of $577,703.47 | $577,703.47 of $577,703.47 | fill in after local run |
-| Cost | $0 | $0 | fill in after local run |
-| Cached re-run cost | $0 | $0 | fill in after local run |
+| Fraud recall (fraud flagged HIGH) | 52.9% (9/17) | 100.0% (17/17) | 100.0% (17/17) |
+| False alarms (L cases flagged HIGH) | 0.0% (0/15) | 0.0% (0/15) | 0.0% (0/15) |
+| Risk-level accuracy | 73.3% (33/45) | 97.8% (44/45) | 100.0% (45/45) |
+| Signal recall | 28.6% (10/35) | 97.1% (34/35) | 100.0% (35/35) |
+| Dollars at risk caught (on fraud flagged HIGH) | $398,422.39 of $577,703.47 | $577,703.47 of $577,703.47 | $577,703.47 of $577,703.47 |
+| Cost | $0 | $0 | $0.1960 (45 calls, 0 retries, 0 guard failures, 0 API errors) |
+| Cached re-run cost | $0 | $0 | $0.0000 (45/45 cache hits, 0 calls) |
 
 Rules miss: G02 (grey, supplier relocated to Canada). The regex does not pick up the new bank
 country, so it scores LOW instead of the planted HIGH.
@@ -152,13 +153,13 @@ country, so it scores LOW instead of the planted HIGH.
 
 | Metric | Naive | Rules | Claude |
 |---|---|---|---|
-| Fraud recall (fraud flagged HIGH) | 80.0% (8/10) | 100.0% (10/10) | fill in after local run |
+| Fraud recall (fraud flagged HIGH) | 80.0% (8/10) | 100.0% (10/10) | 100.0% (10/10) |
 | False alarms | n/a (no legit cases) | n/a (no legit cases) | n/a (no legit cases) |
-| Risk-level accuracy | 80.0% (8/10) | 100.0% (10/10) | fill in after local run |
-| Signal recall | 33.3% (8/24) | 95.8% (23/24) | fill in after local run |
-| Dollars at risk caught (on fraud flagged HIGH) | $121,797.01 of $196,388.39 | $196,388.39 of $196,388.39 | fill in after local run |
-| Cost | $0 | $0 | fill in after local run |
-| Cached re-run cost | $0 | $0 | fill in after local run |
+| Risk-level accuracy | 80.0% (8/10) | 100.0% (10/10) | 100.0% (10/10) |
+| Signal recall | 33.3% (8/24) | 95.8% (23/24) | 100.0% (24/24) |
+| Dollars at risk caught (on fraud flagged HIGH) | $121,797.01 of $196,388.39 | $196,388.39 of $196,388.39 | $196,388.39 of $196,388.39 |
+| Cost | $0 | $0 | $0.0456 |
+| Cached re-run cost | $0 | $0 | not measured |
 
 Rules miss one signal: COUNTRY_CHANGE on R04 (compromised mailbox). R04 is still HIGH from its
 other signals.
@@ -167,17 +168,29 @@ other signals.
 
 | Metric | Naive | Rules | Claude |
 |---|---|---|---|
-| Fraud recall (fraud flagged HIGH) | 0.0% (0/7) | 14.3% (1/7) | fill in after local run |
-| False alarms (legit P cases flagged HIGH) | 0.0% (0/3) | 0.0% (0/3) | fill in after local run |
-| Risk-level accuracy | 30.0% (3/10) | 40.0% (4/10) | fill in after local run |
-| Signal recall | 0.0% (0/8) | 25.0% (2/8) | fill in after local run |
-| Dollars at risk caught (on fraud flagged HIGH) | $0.00 of $167,779.75 | $20,583.48 of $167,779.75 | fill in after local run |
-| Cost | $0 | $0 | fill in after local run |
-| Cached re-run cost | $0 | $0 | fill in after local run |
+| Fraud recall (fraud flagged HIGH) | 0.0% (0/7) | 14.3% (1/7) | 100.0% (7/7) |
+| False alarms (legit P cases flagged HIGH) | 0.0% (0/3) | 0.0% (0/3) | 0.0% (0/3) |
+| Risk-level accuracy | 30.0% (3/10) | 40.0% (4/10) | 100.0% (10/10) |
+| Signal recall | 0.0% (0/8) | 25.0% (2/8) | 100.0% (8/8) |
+| Dollars at risk caught (on fraud flagged HIGH) | $0.00 of $167,779.75 | $20,583.48 of $167,779.75 | $167,779.75 of $167,779.75 |
+| Cost | $0 | $0 | $0.0418 |
+| Cached re-run cost | $0 | $0 | not measured |
 
 Rules catch only P04 (shared account, found by matching digits against the master data, not by
 keywords). They miss reworded skip-verification (P01, P06), reworded urgency (P02), a country
 named only by a city (P03 Pune, P07 Toronto) and a holder named inside a sentence (P05).
+
+### What the numbers show
+
+On the main and red-team sets the regex rules were already strong: 100% fraud recall on both,
+because those cases use the wording the rules were written for. The difference shows on the
+reworded set. There, rules-only fell to 14.3% fraud recall (1/7) and naive to 0/7, while the
+Claude path caught 7/7 with 0 false alarms. Because of never-downgrade, the model can only add
+signals to what the rules found; it cannot remove one.
+
+Cost was about $0.0044 per request. Prompt caching read 1,717 system-prompt tokens from cache on
+each call, and the response cache made a re-run of the main set cost $0. Latency was about 2.6
+seconds per request. Two fresh runs of the main set gave the same result.
 
 Each run writes its own report with a per-case table:
 
@@ -345,11 +358,13 @@ python -m bankreview eval --by claude --no-cache
 - **CA institution-number gap on the model path.** The 3-digit Canadian institution number is
   too short to tokenize, so on the model path a shared Canadian account cannot be matched from
   the model's tokens alone. The rules-only floor still catches it. No planted case depends on it.
-- **Explanation-number guard was too strict at first.** The first real run flagged dates
-  (for example "1 December 2026") as untrusted numbers on legit cases L01 and L04, so the guard
-  was narrowed to phone numbers from the body (unless on file) and numbers with 5+ digits.
-- **No Claude numbers yet.** There is no API key in the build sandbox. The Claude column is
-  filled in after a local run.
+- **Explanation-number guard was too strict at first.** The first real run sent legit cases
+  L01 and L04 to NEEDS_HUMAN because the explanation repeated the year from an effective date
+  (for example "1 December 2026"), so the guard was narrowed to phone numbers from the body
+  (unless on file) and numbers with 5+ digits.
+- **The reworded set is small and not independent.** It has 10 cases, and the same author
+  wrote the cases, the labels and the prompt. 100% means the model path caught every planted
+  pattern in wording it had not seen, not that it is proven on real fraud.
 
 ## Project layout
 
@@ -376,4 +391,7 @@ python -m bankreview eval --by claude --no-cache
   baselines, eval against the planted labels.
 - PR 3: bank-number tokens, the single Claude extraction call, guards, never-downgrade,
   response cache, audit log, held-out reworded set (P01-P10).
-- PR 4: separate reports per set confirmed by a test; this README.
+- PR 4: separate reports per set confirmed by a test; README rewrite.
+- PR 5: explanation-number guard narrowed to body phone numbers and 5+ digit numbers.
+- PRs 1-4 and the guard fix are merged. The real Claude run is done; its numbers are in the
+  Results tables above.
